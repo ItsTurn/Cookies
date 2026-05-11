@@ -1,37 +1,38 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { SITE_CONFIG } from './siteConfig.js';
 
 const ADMIN_WORKER_URL = 'https://admin-panel.alexshirakawa.workers.dev';
 const ADMIN_CREDENTIALS_KEY = 'bakery-admin-credentials';
 const ADMIN_PANEL_STORAGE_KEY = 'bakery-admin-panel';
-const ADMIN_PANEL_TABS = [
+const DEFAULT_ADMIN_TABS = [
   {
     id: 'admin-orders',
-    field: 'orders',
     label: 'Orders',
+    content: '',
     placeholder: 'Customer orders, pickup times, paid status, and special requests.',
   },
   {
     id: 'admin-recipes',
-    field: 'recipes',
     label: 'Potential Recipes',
+    content: '',
     placeholder: 'Ideas to test, ingredient notes, costing, and seasonal specials.',
   },
   {
     id: 'admin-notes',
-    field: 'notes',
     label: 'Note Board',
+    content: '',
     placeholder: "Reminders for the team, supplier notes, prep lists, and tomorrow's priorities.",
   },
 ];
-const EMPTY_ADMIN_PANEL = {
-  orders: '',
-  recipes: '',
-  notes: '',
+const LEGACY_ADMIN_PANEL_FIELDS = {
+  'admin-orders': 'orders',
+  'admin-recipes': 'recipes',
+  'admin-notes': 'notes',
 };
-const DEFAULT_ADMIN_PANEL_TAB_ID = ADMIN_PANEL_TABS[0].id;
 const EMPTY_MENU = {
   businessName: '',
   orderPhone: '',
+  adminTabs: DEFAULT_ADMIN_TABS,
   categories: [],
 };
 
@@ -61,20 +62,9 @@ function removeSessionValue(key) {
 
 function getStoredAdminPanel() {
   try {
-    return {
-      ...EMPTY_ADMIN_PANEL,
-      ...JSON.parse(localStorage.getItem(ADMIN_PANEL_STORAGE_KEY) || '{}'),
-    };
+    return JSON.parse(localStorage.getItem(ADMIN_PANEL_STORAGE_KEY) || '{}');
   } catch {
-    return EMPTY_ADMIN_PANEL;
-  }
-}
-
-function setStoredAdminPanel(panel) {
-  try {
-    localStorage.setItem(ADMIN_PANEL_STORAGE_KEY, JSON.stringify(panel));
-  } catch {
-    // Keep the notes editable in memory if local storage is unavailable.
+    return {};
   }
 }
 
@@ -102,25 +92,35 @@ function createId(value) {
   return `${slug || 'item'}-${Date.now().toString(36)}`;
 }
 
-function normalizeMenu(menu) {
+function normalizeAdminTabs(tabs) {
+  const legacyPanel = getStoredAdminPanel();
+  const sourceTabs = Array.isArray(tabs) && tabs.length ? tabs : DEFAULT_ADMIN_TABS;
+
+  return sourceTabs.map((tab) => ({
+    id: tab.id || createId(tab.label || 'admin-tab'),
+    label: tab.label || 'Admin Tab',
+    content: tab.content ?? legacyPanel[LEGACY_ADMIN_PANEL_FIELDS[tab.id]] ?? '',
+    placeholder: tab.placeholder || 'Add private admin notes here.',
+  }));
+}
+
+function normalizeMenu(menu = {}) {
   return {
     ...EMPTY_MENU,
     ...menu,
+    businessName: SITE_CONFIG.bakeryName || menu.businessName,
+    adminTabs: normalizeAdminTabs(menu.adminTabs),
     categories: (menu.categories ?? []).map((category) => ({
       published: true,
+      type: category.type || 'menu',
       ...category,
       items: category.items ?? [],
     })),
   };
 }
 
-function isAdminPanelTab(tabId) {
-  return ADMIN_PANEL_TABS.some((tab) => tab.id === tabId);
-}
-
 function App() {
-  const [menu, setMenu] = useState(EMPTY_MENU);
-  const [adminPanel, setAdminPanel] = useState(getStoredAdminPanel);
+  const [menu, setMenu] = useState(() => normalizeMenu());
   const [isLoadingMenu, setIsLoadingMenu] = useState(true);
   const [activeTabId, setActiveTabId] = useState(() => (isAdminPath() ? 'admin' : 'order-now'));
   const [isAdminRoute, setIsAdminRoute] = useState(isAdminPath);
@@ -132,9 +132,24 @@ function App() {
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [isSavingMenu, setIsSavingMenu] = useState(false);
   const [menuStatus, setMenuStatus] = useState('');
-  const [selectedAdminCategoryId, setSelectedAdminCategoryId] = useState(
-    DEFAULT_ADMIN_PANEL_TAB_ID,
+  const [selectedAdminTabId, setSelectedAdminTabId] = useState(DEFAULT_ADMIN_TABS[0].id);
+  const [dragTarget, setDragTarget] = useState(null);
+
+  const siteName = menu.businessName || SITE_CONFIG.bakeryName;
+  const orderTab = useMemo(
+    () => ({
+      id: 'order-now',
+      label: SITE_CONFIG.orderTabLabel,
+    }),
+    [],
   );
+
+  useEffect(() => {
+    document.title = SITE_CONFIG.pageTitle || `${siteName} Menu`;
+    document
+      .querySelector('meta[name="description"]')
+      ?.setAttribute('content', SITE_CONFIG.metaDescription);
+  }, [siteName]);
 
   useEffect(() => {
     async function loadMenu() {
@@ -170,24 +185,26 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (isAdminPanelTab(selectedAdminCategoryId)) {
-      return;
-    }
+    const validAdminIds = [
+      'site-settings',
+      ...menu.adminTabs.map((tab) => tab.id),
+      ...menu.categories.map((category) => category.id),
+    ];
 
-    if (!menu.categories.some((category) => category.id === selectedAdminCategoryId)) {
-      setSelectedAdminCategoryId(DEFAULT_ADMIN_PANEL_TAB_ID);
+    if (!validAdminIds.includes(selectedAdminTabId)) {
+      setSelectedAdminTabId(menu.adminTabs[0]?.id ?? menu.categories[0]?.id ?? '');
     }
-  }, [menu.categories, selectedAdminCategoryId]);
+  }, [menu.adminTabs, menu.categories, selectedAdminTabId]);
 
   useEffect(() => {
     if (isAdminRoute) {
       setActiveTabId('admin');
     } else if (activeTabId === 'admin') {
       setActiveTabId(
-        menu.categories.find((category) => category.published !== false)?.id ?? 'order-now',
+        menu.categories.find((category) => category.published !== false)?.id ?? orderTab.id,
       );
     }
-  }, [activeTabId, isAdminRoute, menu.categories]);
+  }, [activeTabId, isAdminRoute, menu.categories, orderTab.id]);
 
   useEffect(() => {
     if (isAdminRoute) {
@@ -198,30 +215,33 @@ function App() {
       ...menu.categories
         .filter((category) => category.published !== false)
         .map((category) => category.id),
-      'order-now',
+      orderTab.id,
       'admin',
     ];
 
     if (!validTabIds.includes(activeTabId)) {
       setActiveTabId(
-        menu.categories.find((category) => category.published !== false)?.id ?? 'order-now',
+        menu.categories.find((category) => category.published !== false)?.id ?? orderTab.id,
       );
     }
-  }, [activeTabId, isAdminRoute, menu.categories]);
+  }, [activeTabId, isAdminRoute, menu.categories, orderTab.id]);
 
   const customerTabs = [
     ...menu.categories.filter((category) => category.published !== false),
-    {
-      id: 'order-now',
-      label: 'Order Now',
-    },
+    orderTab,
   ];
   const activeCategory = menu.categories.find((category) => category.id === activeTabId);
-  const isOrderTab = activeTabId === 'order-now';
+  const isOrderTab = activeTabId === orderTab.id;
   const isAdminTab = activeTabId === 'admin';
-  const selectedAdminCategory = menu.categories.find(
-    (category) => category.id === selectedAdminCategoryId,
-  );
+  const selectedAdminNoteTab = menu.adminTabs.find((tab) => tab.id === selectedAdminTabId);
+  const selectedAdminCategory = menu.categories.find((category) => category.id === selectedAdminTabId);
+
+  function openAdminMenu() {
+    window.history.pushState({}, '', `${getAppHomePath().replace(/\/?$/, '/')}admin`);
+    setIsAdminRoute(true);
+    setActiveTabId('admin');
+    document.getElementById('menu')?.scrollIntoView();
+  }
 
   function showCustomerTab(tabId) {
     if (isAdminPath()) {
@@ -276,10 +296,7 @@ function App() {
   }
 
   function updateMenuDraft(updater) {
-    setMenu((currentMenu) => {
-      const nextMenu = updater(currentMenu);
-      return nextMenu;
-    });
+    setMenu((currentMenu) => updater(currentMenu));
     setMenuStatus('Unsaved changes.');
   }
 
@@ -318,6 +335,13 @@ function App() {
     }
   }
 
+  function updateSiteField(field, value) {
+    updateMenuDraft((currentMenu) => ({
+      ...currentMenu,
+      [field]: value,
+    }));
+  }
+
   function updateCategory(categoryId, field, value) {
     updateMenuDraft((currentMenu) => ({
       ...currentMenu,
@@ -327,11 +351,12 @@ function App() {
     }));
   }
 
-  function addCategory() {
+  function addCategory(type = 'menu') {
     const category = {
-      id: createId('new-tab'),
-      label: 'New Tab',
+      id: createId(type === 'promotion' ? 'new-promo-tab' : 'new-menu-tab'),
+      label: type === 'promotion' ? 'New Promotion' : 'New Tab',
       published: false,
+      type,
       items: [],
     };
 
@@ -339,25 +364,13 @@ function App() {
       ...currentMenu,
       categories: [...currentMenu.categories, category],
     }));
-    setSelectedAdminCategoryId(category.id);
-  }
-
-  function updateAdminPanel(field, value) {
-    setAdminPanel((currentPanel) => {
-      const nextPanel = {
-        ...currentPanel,
-        [field]: value,
-      };
-
-      setStoredAdminPanel(nextPanel);
-      return nextPanel;
-    });
+    setSelectedAdminTabId(category.id);
   }
 
   function removeCategory(categoryId) {
     updateMenuDraft((currentMenu) => {
       const categories = currentMenu.categories.filter((category) => category.id !== categoryId);
-      const nextActiveTabId = categories[0]?.id ?? 'order-now';
+      const nextActiveTabId = categories[0]?.id ?? orderTab.id;
 
       if (activeTabId === categoryId) {
         setActiveTabId(nextActiveTabId);
@@ -370,25 +383,66 @@ function App() {
     });
   }
 
-  function addItem(categoryId) {
-    const item = {
-      id: createId('new-bake'),
-      title: 'New Bake',
-      description: 'Add a short description for this menu item.',
-      price: '$0.00',
-      photo: 'https://images.unsplash.com/photo-1509440159596-0249088772ff?auto=format&fit=crop&w=900&q=80',
-      photoAlt: 'Fresh baked goods on a bakery table',
+  function addAdminTab() {
+    const tab = {
+      id: createId('admin-tab'),
+      label: 'New Admin Tab',
+      content: '',
+      placeholder: 'Add private admin notes here.',
     };
 
     updateMenuDraft((currentMenu) => ({
       ...currentMenu,
-      categories: currentMenu.categories.map((category) =>
-        category.id === categoryId
+      adminTabs: [...currentMenu.adminTabs, tab],
+    }));
+    setSelectedAdminTabId(tab.id);
+  }
+
+  function updateAdminTab(tabId, field, value) {
+    updateMenuDraft((currentMenu) => ({
+      ...currentMenu,
+      adminTabs: currentMenu.adminTabs.map((tab) =>
+        tab.id === tabId ? { ...tab, [field]: value } : tab,
+      ),
+    }));
+  }
+
+  function removeAdminTab(tabId) {
+    updateMenuDraft((currentMenu) => ({
+      ...currentMenu,
+      adminTabs: currentMenu.adminTabs.filter((tab) => tab.id !== tabId),
+    }));
+  }
+
+  function addItem(categoryId) {
+    const category = menu.categories.find((currentCategory) => currentCategory.id === categoryId);
+    const isPromotion = category?.type === 'promotion';
+    const item = isPromotion
+      ? {
+          id: createId('new-promotion'),
+          title: 'New Promotion',
+          description: 'Add promotion text here.',
+          photo: '',
+        }
+      : {
+          id: createId('new-bake'),
+          title: 'New Bake',
+          description: 'Add a short description for this menu item.',
+          price: '$0.00',
+          photo:
+            'https://images.unsplash.com/photo-1509440159596-0249088772ff?auto=format&fit=crop&w=900&q=80',
+          photoAlt: 'Fresh baked goods on a bakery table',
+        };
+
+    updateMenuDraft((currentMenu) => ({
+      ...currentMenu,
+      categories: currentMenu.categories.map((currentCategory) =>
+        currentCategory.id === categoryId
           ? {
-              ...category,
-              items: [...category.items, item],
+              ...currentCategory,
+              items: [...currentCategory.items, item],
             }
-          : category,
+          : currentCategory,
       ),
     }));
   }
@@ -423,16 +477,64 @@ function App() {
     }));
   }
 
+  function moveItem(categoryId, fromIndex, toIndex) {
+    if (fromIndex === toIndex) {
+      return;
+    }
+
+    updateMenuDraft((currentMenu) => ({
+      ...currentMenu,
+      categories: currentMenu.categories.map((category) => {
+        if (category.id !== categoryId) {
+          return category;
+        }
+
+        const items = [...category.items];
+        const [movedItem] = items.splice(fromIndex, 1);
+        items.splice(toIndex, 0, movedItem);
+        return { ...category, items };
+      }),
+    }));
+  }
+
+  function moveCategory(fromIndex, toIndex) {
+    if (fromIndex === toIndex) {
+      return;
+    }
+
+    updateMenuDraft((currentMenu) => {
+      const categories = [...currentMenu.categories];
+      const [movedCategory] = categories.splice(fromIndex, 1);
+      categories.splice(toIndex, 0, movedCategory);
+      return { ...currentMenu, categories };
+    });
+  }
+
+  function moveAdminTab(fromIndex, toIndex) {
+    if (fromIndex === toIndex) {
+      return;
+    }
+
+    updateMenuDraft((currentMenu) => {
+      const adminTabs = [...currentMenu.adminTabs];
+      const [movedTab] = adminTabs.splice(fromIndex, 1);
+      adminTabs.splice(toIndex, 0, movedTab);
+      return { ...currentMenu, adminTabs };
+    });
+  }
+
   return (
     <main>
       <header className="site-header">
-        <a className="brand" href="#top" aria-label={`${menu.businessName || 'Bakery'} home`}>
-          {menu.businessName || 'Bakery'}
+        <a className="brand" href="#top" aria-label={`${siteName} home`}>
+          {siteName}
         </a>
         <nav aria-label="Menu categories">
           {customerTabs.map((tab) => (
             <a
-              className={`nav-link ${activeTabId === tab.id ? 'is-active' : ''}`}
+              className={`nav-link ${tab.type === 'promotion' ? 'is-promotion' : ''} ${
+                activeTabId === tab.id ? 'is-active' : ''
+              }`}
               href="#menu"
               key={tab.id}
               onClick={(event) => {
@@ -447,16 +549,20 @@ function App() {
         </nav>
       </header>
 
+      <button
+        aria-label="Open admin menu"
+        className="secret-admin-button"
+        type="button"
+        onClick={openAdminMenu}
+      />
+
       <section className="hero" id="top" aria-labelledby="hero-title">
         <div className="hero-copy">
-          <p className="eyebrow">Small batch bakery</p>
-          <h1 id="hero-title">Fresh bakes for slow mornings and bright tables.</h1>
-          <p>
-            Golden biscuits, tender crumb, and seasonal finishes baked in careful batches every
-            morning.
-          </p>
+          <p className="eyebrow">{SITE_CONFIG.heroEyebrow}</p>
+          <h1 id="hero-title">{SITE_CONFIG.heroTitle}</h1>
+          <p>{SITE_CONFIG.heroCopy}</p>
           <a className="hero-action" href="#menu">
-            Browse the menu
+            {SITE_CONFIG.heroAction}
           </a>
         </div>
       </section>
@@ -464,24 +570,28 @@ function App() {
       <section className="menu-section" id="menu" aria-labelledby="menu-title">
         <div className="section-heading">
           <div>
-            <p className="eyebrow">Menu</p>
+            <p className="eyebrow">{SITE_CONFIG.menuEyebrow}</p>
             <h2 id="menu-title">
-              {isAdminTab ? 'Admin Menu' : isOrderTab ? 'Order Now' : activeCategory?.label}
+              {isAdminTab ? 'Admin Menu' : isOrderTab ? orderTab.label : activeCategory?.label}
             </h2>
           </div>
           <p>
             {isAdminTab
-              ? 'Sign in to manage menu tabs and bakery items.'
+              ? 'Sign in to manage site settings, admin tabs, menu tabs, and bakery items.'
               : isOrderTab
                 ? 'Fresh bakes are made in small batches. A quick text is the easiest way to reserve yours.'
-                : 'Choose a single warm bake, build a box, or save a few for the walk home.'}
+                : activeCategory?.type === 'promotion'
+                  ? 'Seasonal notes, limited specials, and bakery announcements.'
+                  : 'Choose a single warm bake, build a box, or save a few for the walk home.'}
           </p>
         </div>
 
         <div className="tabs" role="tablist" aria-label="Bakery menu">
           {customerTabs.map((tab) => (
             <button
-              className={`tab ${activeTabId === tab.id ? 'is-active' : ''}`}
+              className={`tab ${tab.type === 'promotion' ? 'is-promotion' : ''} ${
+                activeTabId === tab.id ? 'is-active' : ''
+              }`}
               key={tab.id}
               type="button"
               role="tab"
@@ -497,33 +607,41 @@ function App() {
           {isLoadingMenu && !isAdminTab ? (
             <div className="order-panel">
               <p className="eyebrow">Loading</p>
-              <h3>Getting today&apos;s menu</h3>
+              <h3>Getting today's menu</h3>
               <p>Fresh bakes are coming from Cloudflare.</p>
             </div>
           ) : isAdminTab ? (
             <AdminPanel
               adminForm={adminForm}
               adminSession={adminSession}
+              dragTarget={dragTarget}
               isLoggingIn={isLoggingIn}
-              loginError={loginError}
-              adminPanel={adminPanel}
               isSavingMenu={isSavingMenu}
+              loginError={loginError}
               menu={menu}
               menuStatus={menuStatus}
               selectedAdminCategory={selectedAdminCategory}
-              selectedAdminCategoryId={selectedAdminCategoryId}
+              selectedAdminNoteTab={selectedAdminNoteTab}
+              selectedAdminTabId={selectedAdminTabId}
+              onAddAdminTab={addAdminTab}
               onAddCategory={addCategory}
               onAddItem={addItem}
               onAdminFormChange={setAdminForm}
+              onDragTargetChange={setDragTarget}
               onLogin={handleAdminLogin}
               onLogout={handleAdminLogout}
+              onMoveAdminTab={moveAdminTab}
+              onMoveCategory={moveCategory}
+              onMoveItem={moveItem}
+              onRemoveAdminTab={removeAdminTab}
               onRemoveCategory={removeCategory}
               onRemoveItem={removeItem}
               onSaveMenu={saveMenu}
-              onSelectCategory={setSelectedAdminCategoryId}
-              onUpdateAdminPanel={updateAdminPanel}
+              onSelectTab={setSelectedAdminTabId}
+              onUpdateAdminTab={updateAdminTab}
               onUpdateCategory={updateCategory}
               onUpdateItem={updateItem}
+              onUpdateSiteField={updateSiteField}
             />
           ) : isOrderTab ? (
             <div className="order-panel">
@@ -533,10 +651,7 @@ function App() {
                   ? `Send your order to ${menu.orderPhone}`
                   : 'Ordering details are coming soon'}
               </h3>
-              <p>
-                Include your name, pickup day, pickup time, and the bakes you would like. We will
-                text back to confirm availability.
-              </p>
+              <p>{SITE_CONFIG.orderInstructions}</p>
               {menu.orderPhone ? (
                 <a
                   className="hero-action"
@@ -545,6 +660,20 @@ function App() {
                   Text {menu.orderPhone}
                 </a>
               ) : null}
+            </div>
+          ) : activeCategory?.type === 'promotion' ? (
+            <div className="menu-grid promotion-grid">
+              {activeCategory.items.map((item) => (
+                <article className="menu-card promotion-card" key={item.id}>
+                  {item.photo ? (
+                    <img src={item.photo} alt={item.title ? `${item.title} promotion` : ''} />
+                  ) : null}
+                  <div className="menu-card-content">
+                    <h3>{item.title}</h3>
+                    <p>{item.description}</p>
+                  </div>
+                </article>
+              ))}
             </div>
           ) : (
             <div className="menu-grid">
@@ -566,8 +695,8 @@ function App() {
       </section>
 
       <footer>
-        <span>{menu.businessName || 'Bakery'}</span>
-        <span>Open daily from 7:00 AM</span>
+        <span>{siteName}</span>
+        <span>{SITE_CONFIG.defaultOpenHours}</span>
       </footer>
     </main>
   );
@@ -575,27 +704,35 @@ function App() {
 
 function AdminPanel({
   adminForm,
-  adminPanel,
   adminSession,
+  dragTarget,
   isLoggingIn,
   isSavingMenu,
   loginError,
   menu,
   menuStatus,
   selectedAdminCategory,
-  selectedAdminCategoryId,
+  selectedAdminNoteTab,
+  selectedAdminTabId,
+  onAddAdminTab,
   onAddCategory,
   onAddItem,
   onAdminFormChange,
+  onDragTargetChange,
   onLogin,
   onLogout,
+  onMoveAdminTab,
+  onMoveCategory,
+  onMoveItem,
+  onRemoveAdminTab,
   onRemoveCategory,
   onRemoveItem,
   onSaveMenu,
-  onSelectCategory,
-  onUpdateAdminPanel,
+  onSelectTab,
+  onUpdateAdminTab,
   onUpdateCategory,
   onUpdateItem,
+  onUpdateSiteField,
 }) {
   if (!adminSession) {
     return (
@@ -656,191 +793,353 @@ function AdminPanel({
 
       <div className="admin-layout">
         <aside className="admin-sidebar" aria-label="Admin menu tabs">
-          {ADMIN_PANEL_TABS.map((tab) => (
+          <div className="admin-sidebar-section">
+            <p className="admin-sidebar-title">Settings</p>
             <button
-              className={`admin-tab ${selectedAdminCategoryId === tab.id ? 'is-active' : ''}`}
-              key={tab.id}
+              className={`admin-tab ${selectedAdminTabId === 'site-settings' ? 'is-active' : ''}`}
               type="button"
-              onClick={() => onSelectCategory(tab.id)}
+              onClick={() => onSelectTab('site-settings')}
             >
-              {tab.label}
+              Site Settings
             </button>
-          ))}
-          <button className="secondary-action" type="button" onClick={onAddCategory}>
-            Add new tab
-          </button>
-          {menu.categories.map((category) => (
-            <button
-              className={`admin-tab ${selectedAdminCategoryId === category.id ? 'is-active' : ''}`}
-              key={category.id}
-              type="button"
-              onClick={() => onSelectCategory(category.id)}
-            >
-              <span>{category.label}</span>
-              {category.published === false ? <span className="admin-tab-status">Draft</span> : null}
-            </button>
-          ))}
-        </aside>
-
-        {isAdminPanelTab(selectedAdminCategoryId) ? (
-          <div className="admin-editor">
-            <AdminPanelNoteTab
-              adminPanel={adminPanel}
-              selectedAdminCategoryId={selectedAdminCategoryId}
-              onUpdateAdminPanel={onUpdateAdminPanel}
-            />
           </div>
-        ) : selectedAdminCategory ? (
-          <div className="admin-editor">
-            <div className="admin-field-row category-settings">
-              <label>
-                Tab name
-                <input
-                  value={selectedAdminCategory.label}
-                  onChange={(event) =>
-                    onUpdateCategory(selectedAdminCategory.id, 'label', event.target.value)
-                  }
-                />
-              </label>
-              <label className="checkbox-field">
-                <input
-                  checked={selectedAdminCategory.published !== false}
-                  type="checkbox"
-                  onChange={(event) =>
-                    onUpdateCategory(selectedAdminCategory.id, 'published', event.target.checked)
-                  }
-                />
-                Published on website
-              </label>
-              <button
-                className="danger-action"
-                type="button"
-                onClick={() => onRemoveCategory(selectedAdminCategory.id)}
-              >
-                Remove tab
-              </button>
-            </div>
 
-            <div className="admin-toolbar">
-              <h3>Items</h3>
+          <div className="admin-sidebar-section">
+            <p className="admin-sidebar-title">Admin Tabs</p>
+            {menu.adminTabs.map((tab, index) => (
+              <div
+                className={`admin-tab ${selectedAdminTabId === tab.id ? 'is-active' : ''}`}
+                draggable
+                key={tab.id}
+                onDragStart={() => onDragTargetChange({ type: 'admin-tab', index })}
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={() => {
+                  if (dragTarget?.type === 'admin-tab') {
+                    onMoveAdminTab(dragTarget.index, index);
+                  }
+                  onDragTargetChange(null);
+                }}
+              >
+                <button className="admin-tab-main" type="button" onClick={() => onSelectTab(tab.id)}>
+                  <span className="drag-handle" aria-hidden="true">
+                    ::
+                  </span>
+                  <span>{tab.label}</span>
+                </button>
+                <ReorderButtons
+                  index={index}
+                  total={menu.adminTabs.length}
+                  onMove={(toIndex) => onMoveAdminTab(index, toIndex)}
+                />
+              </div>
+            ))}
+            <button className="secondary-action" type="button" onClick={onAddAdminTab}>
+              Add admin tab
+            </button>
+          </div>
+
+          <div className="admin-sidebar-section">
+            <p className="admin-sidebar-title">Website Tabs</p>
+            <div className="admin-actions compact-actions">
+              <button className="secondary-action" type="button" onClick={() => onAddCategory('menu')}>
+                Add menu tab
+              </button>
               <button
                 className="secondary-action"
                 type="button"
-                onClick={() => onAddItem(selectedAdminCategory.id)}
+                onClick={() => onAddCategory('promotion')}
               >
-                Add item
+                Add promo tab
               </button>
             </div>
+            {menu.categories.map((category, index) => (
+              <div
+                className={`admin-tab ${selectedAdminTabId === category.id ? 'is-active' : ''}`}
+                draggable
+                key={category.id}
+                onDragStart={() => onDragTargetChange({ type: 'category', index })}
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={() => {
+                  if (dragTarget?.type === 'category') {
+                    onMoveCategory(dragTarget.index, index);
+                  }
+                  onDragTargetChange(null);
+                }}
+              >
+                <button className="admin-tab-main" type="button" onClick={() => onSelectTab(category.id)}>
+                  <span className="drag-handle" aria-hidden="true">
+                    ::
+                  </span>
+                  <span>{category.label}</span>
+                  {category.published === false ? <span className="admin-tab-status">Draft</span> : null}
+                </button>
+                <ReorderButtons
+                  index={index}
+                  total={menu.categories.length}
+                  onMove={(toIndex) => onMoveCategory(index, toIndex)}
+                />
+              </div>
+            ))}
+          </div>
+        </aside>
 
-            <div className="admin-items">
-              {selectedAdminCategory.items.map((item) => (
-                <article className="admin-item" key={item.id}>
-                  <div className="admin-field-row">
-                    <label>
-                      Item name
-                      <input
-                        value={item.title}
-                        onChange={(event) =>
-                          onUpdateItem(
-                            selectedAdminCategory.id,
-                            item.id,
-                            'title',
-                            event.target.value,
-                          )
-                        }
-                      />
-                    </label>
-                    <label>
-                      Price
-                      <input
-                        value={item.price}
-                        onChange={(event) =>
-                          onUpdateItem(
-                            selectedAdminCategory.id,
-                            item.id,
-                            'price',
-                            event.target.value,
-                          )
-                        }
-                      />
-                    </label>
-                  </div>
-                  <label>
-                    Description
-                    <textarea
-                      value={item.description}
-                      onChange={(event) =>
-                        onUpdateItem(
-                          selectedAdminCategory.id,
-                          item.id,
-                          'description',
-                          event.target.value,
-                        )
-                      }
-                    />
-                  </label>
-                  <label>
-                    Photo URL
-                    <input
-                      value={item.photo}
-                      onChange={(event) =>
-                        onUpdateItem(
-                          selectedAdminCategory.id,
-                          item.id,
-                          'photo',
-                          event.target.value,
-                        )
-                      }
-                    />
-                  </label>
-                  <label>
-                    Photo alt text
-                    <input
-                      value={item.photoAlt}
-                      onChange={(event) =>
-                        onUpdateItem(
-                          selectedAdminCategory.id,
-                          item.id,
-                          'photoAlt',
-                          event.target.value,
-                        )
-                      }
-                    />
-                  </label>
-                  <button
-                    className="danger-action"
-                    type="button"
-                    onClick={() => onRemoveItem(selectedAdminCategory.id, item.id)}
-                  >
-                    Remove item
-                  </button>
-                </article>
-              ))}
+        <div className="admin-editor">
+          {selectedAdminTabId === 'site-settings' ? (
+            <SiteSettings menu={menu} onUpdateSiteField={onUpdateSiteField} />
+          ) : selectedAdminNoteTab ? (
+            <AdminNoteEditor
+              tab={selectedAdminNoteTab}
+              onRemoveAdminTab={onRemoveAdminTab}
+              onUpdateAdminTab={onUpdateAdminTab}
+            />
+          ) : selectedAdminCategory ? (
+            <CategoryEditor
+              category={selectedAdminCategory}
+              dragTarget={dragTarget}
+              onAddItem={onAddItem}
+              onDragTargetChange={onDragTargetChange}
+              onMoveItem={onMoveItem}
+              onRemoveCategory={onRemoveCategory}
+              onRemoveItem={onRemoveItem}
+              onUpdateCategory={onUpdateCategory}
+              onUpdateItem={onUpdateItem}
+            />
+          ) : (
+            <div className="order-panel">
+              <p>Add a tab to start building the menu.</p>
             </div>
-          </div>
-        ) : (
-          <div className="order-panel">
-            <p>Add a tab to start building the menu.</p>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
-function AdminPanelNoteTab({ adminPanel, selectedAdminCategoryId, onUpdateAdminPanel }) {
-  const selectedTab =
-    ADMIN_PANEL_TABS.find((tab) => tab.id === selectedAdminCategoryId) ?? ADMIN_PANEL_TABS[0];
+function SiteSettings({ menu, onUpdateSiteField }) {
+  return (
+    <div className="settings-panel">
+      <div className="admin-field-row">
+        <label>
+          Bakery name from config
+          <input
+            readOnly
+            value={SITE_CONFIG.bakeryName}
+          />
+        </label>
+        <label>
+          Order phone
+          <input
+            value={menu.orderPhone}
+            onChange={(event) => onUpdateSiteField('orderPhone', event.target.value)}
+          />
+        </label>
+      </div>
+      <p className="admin-help">
+        The bakery name and deeper site wording defaults live in src/siteConfig.js, including the
+        hero text, order tab label, page title, and footer hours.
+      </p>
+    </div>
+  );
+}
+
+function ReorderButtons({ index, total, onMove }) {
+  return (
+    <span className="reorder-buttons" aria-label="Reorder controls">
+      <button
+        aria-label="Move up"
+        disabled={index === 0}
+        type="button"
+        onClick={(event) => {
+          event.stopPropagation();
+          onMove(index - 1);
+        }}
+      >
+        ↑
+      </button>
+      <button
+        aria-label="Move down"
+        disabled={index >= total - 1}
+        type="button"
+        onClick={(event) => {
+          event.stopPropagation();
+          onMove(index + 1);
+        }}
+      >
+        ↓
+      </button>
+    </span>
+  );
+}
+
+function AdminNoteEditor({ tab, onRemoveAdminTab, onUpdateAdminTab }) {
+  return (
+    <>
+      <div className="admin-field-row category-settings">
+        <label>
+          Admin tab name
+          <input
+            value={tab.label}
+            onChange={(event) => onUpdateAdminTab(tab.id, 'label', event.target.value)}
+          />
+        </label>
+        <label>
+          Placeholder
+          <input
+            value={tab.placeholder}
+            onChange={(event) => onUpdateAdminTab(tab.id, 'placeholder', event.target.value)}
+          />
+        </label>
+        <button className="danger-action" type="button" onClick={() => onRemoveAdminTab(tab.id)}>
+          Remove tab
+        </button>
+      </div>
+      <label className="admin-note-tab">
+        {tab.label}
+        <textarea
+          placeholder={tab.placeholder}
+          value={tab.content}
+          onChange={(event) => onUpdateAdminTab(tab.id, 'content', event.target.value)}
+        />
+      </label>
+    </>
+  );
+}
+
+function CategoryEditor({
+  category,
+  dragTarget,
+  onAddItem,
+  onDragTargetChange,
+  onMoveItem,
+  onRemoveCategory,
+  onRemoveItem,
+  onUpdateCategory,
+  onUpdateItem,
+}) {
+  const isPromotion = category.type === 'promotion';
 
   return (
-    <label className="admin-note-tab">
-      {selectedTab.label}
-      <textarea
-        placeholder={selectedTab.placeholder}
-        value={adminPanel[selectedTab.field]}
-        onChange={(event) => onUpdateAdminPanel(selectedTab.field, event.target.value)}
-      />
-    </label>
+    <>
+      <div className="admin-field-row category-settings">
+        <label>
+          Tab name
+          <input
+            value={category.label}
+            onChange={(event) => onUpdateCategory(category.id, 'label', event.target.value)}
+          />
+        </label>
+        <label className="checkbox-field">
+          <input
+            checked={category.published !== false}
+            type="checkbox"
+            onChange={(event) =>
+              onUpdateCategory(category.id, 'published', event.target.checked)
+            }
+          />
+          Published on website
+        </label>
+        <button className="danger-action" type="button" onClick={() => onRemoveCategory(category.id)}>
+          Remove tab
+        </button>
+      </div>
+
+      <div className="admin-toolbar inline-toolbar">
+        <h3>{isPromotion ? 'Promotions' : 'Items'}</h3>
+        <button className="secondary-action" type="button" onClick={() => onAddItem(category.id)}>
+          {isPromotion ? 'Add promotion' : 'Add item'}
+        </button>
+      </div>
+
+      <div className="admin-items">
+        {category.items.map((item, index) => (
+          <article
+            className="admin-item"
+            draggable
+            key={item.id}
+            onDragStart={() => onDragTargetChange({ type: 'item', categoryId: category.id, index })}
+            onDragOver={(event) => event.preventDefault()}
+            onDrop={() => {
+              if (dragTarget?.type === 'item' && dragTarget.categoryId === category.id) {
+                onMoveItem(category.id, dragTarget.index, index);
+              }
+              onDragTargetChange(null);
+            }}
+          >
+            <div className="admin-item-heading">
+              <div>
+                <span className="drag-handle" aria-hidden="true">
+                  ::
+                </span>
+                <strong>Drag to reorder</strong>
+              </div>
+              <ReorderButtons
+                index={index}
+                total={category.items.length}
+                onMove={(toIndex) => onMoveItem(category.id, index, toIndex)}
+              />
+            </div>
+            <div className="admin-field-row">
+              <label>
+                {isPromotion ? 'Promotion title' : 'Item name'}
+                <input
+                  value={item.title}
+                  onChange={(event) =>
+                    onUpdateItem(category.id, item.id, 'title', event.target.value)
+                  }
+                />
+              </label>
+              {isPromotion ? null : (
+                <label>
+                  Price
+                  <input
+                    value={item.price}
+                    onChange={(event) =>
+                      onUpdateItem(category.id, item.id, 'price', event.target.value)
+                    }
+                  />
+                </label>
+              )}
+            </div>
+            <label>
+              {isPromotion ? 'Text' : 'Description'}
+              <textarea
+                value={item.description}
+                onChange={(event) =>
+                  onUpdateItem(category.id, item.id, 'description', event.target.value)
+                }
+              />
+            </label>
+            <label>
+              Photo URL
+              <input
+                value={item.photo}
+                onChange={(event) =>
+                  onUpdateItem(category.id, item.id, 'photo', event.target.value)
+                }
+              />
+            </label>
+            {isPromotion ? null : (
+              <label>
+                Photo alt text
+                <input
+                  value={item.photoAlt}
+                  onChange={(event) =>
+                    onUpdateItem(category.id, item.id, 'photoAlt', event.target.value)
+                  }
+                />
+              </label>
+            )}
+            <button
+              className="danger-action"
+              type="button"
+              onClick={() => onRemoveItem(category.id, item.id)}
+            >
+              {isPromotion ? 'Remove promotion' : 'Remove item'}
+            </button>
+          </article>
+        ))}
+      </div>
+    </>
   );
 }
 

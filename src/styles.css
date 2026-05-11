@@ -105,6 +105,24 @@ img {
   font-weight: 900;
 }
 
+.secret-admin-button {
+  position: fixed;
+  z-index: 20;
+  right: 0;
+  bottom: 0;
+  width: 42px;
+  height: 42px;
+  border: 0;
+  background: transparent;
+  opacity: 0.02;
+}
+
+.secret-admin-button:focus-visible {
+  outline: 3px solid var(--green);
+  outline-offset: -6px;
+  opacity: 1;
+}
+
 nav {
   display: flex;
   flex-wrap: wrap;
@@ -131,6 +149,19 @@ nav {
 .tab.is-active {
   border-color: transparent;
   background: var(--ink);
+  color: #ffffff;
+}
+
+.nav-link.is-promotion,
+.tab.is-promotion {
+  border-color: rgba(217, 76, 69, 0.42);
+  background: #fff1d8;
+  color: #7b2d24;
+}
+
+.nav-link.is-promotion.is-active,
+.tab.is-promotion.is-active {
+  background: #d94c45;
   color: #ffffff;
 }
 
@@ -315,6 +346,43 @@ h3 {
   line-height: 1.58;
 }
 
+.promotion-card .menu-card-content {
+  min-height: 180px;
+}
+
+.promotion-card {
+  border-color: rgba(217, 76, 69, 0.34);
+  background: #fff7e8;
+  box-shadow: 0 20px 60px rgba(217, 76, 69, 0.14);
+}
+
+.promotion-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 380px));
+  justify-content: center;
+}
+
+.promotion-card {
+  text-align: center;
+}
+
+.promotion-card .menu-card-content {
+  justify-items: center;
+}
+
+.promotion-card:not(:has(img)) .menu-card-content {
+  min-height: 220px;
+  justify-content: center;
+}
+
+.promotion-card h3 {
+  color: #a9302b;
+  font-size: clamp(1.5rem, 4vw, 2.4rem);
+}
+
+.promotion-card p {
+  color: #50382f;
+}
+
 .order-panel {
   max-width: 680px;
   border: 1px solid var(--line);
@@ -418,10 +486,30 @@ h3 {
   background: #f8fbf7;
 }
 
+.admin-sidebar-section {
+  display: grid;
+  gap: 10px;
+}
+
+.admin-sidebar-section + .admin-sidebar-section {
+  margin-top: 12px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.admin-sidebar-title {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 900;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
 .admin-tab {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
   gap: 10px;
   min-height: 42px;
   border: 1px solid var(--line);
@@ -431,6 +519,47 @@ h3 {
   color: var(--ink);
   text-align: left;
   font-weight: 850;
+}
+
+.admin-tab-main {
+  display: flex;
+  align-items: center;
+  justify-content: start;
+  gap: 10px;
+  min-width: 0;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.admin-tab-main span:not(.drag-handle) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.admin-tab[draggable="true"],
+.admin-item[draggable="true"] {
+  cursor: grab;
+}
+
+.admin-tab[draggable="true"]:active,
+.admin-item[draggable="true"]:active {
+  cursor: grabbing;
+}
+
+.drag-handle {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-weight: 900;
+  letter-spacing: 1px;
+}
+
+.admin-tab.is-active .drag-handle {
+  color: rgba(255, 255, 255, 0.72);
 }
 
 .admin-tab-status {
@@ -459,6 +588,17 @@ h3 {
   align-content: start;
   gap: 20px;
   padding: 22px;
+}
+
+.settings-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.admin-help {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.6;
 }
 
 .admin-field-row {
@@ -497,14 +637,65 @@ h3 {
   gap: 16px;
 }
 
+.inline-toolbar {
+  border: 0;
+  padding: 0;
+}
+
 .admin-item {
   display: grid;
   gap: 16px;
   padding: 18px;
 }
 
+.admin-item-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.admin-item-heading > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.reorder-buttons {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 6px;
+}
+
+.reorder-buttons button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--ink);
+  font-weight: 900;
+  line-height: 1;
+}
+
+.admin-tab.is-active .reorder-buttons button {
+  border-color: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+
 .admin-item .danger-action {
   justify-self: start;
+}
+
+.compact-actions {
+  display: grid;
+  grid-template-columns: 1fr;
 }
 
 @keyframes tab-reveal {
