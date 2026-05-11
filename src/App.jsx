@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-const ADMIN_WORKER_URL = 'https://admin-panel.ryanathomas013.workers.dev';
+const ADMIN_WORKER_URL = 'https://admin-panel.alexshirakawa.workers.dev';
 const ADMIN_CREDENTIALS_KEY = 'bakery-admin-credentials';
 const ADMIN_PANEL_STORAGE_KEY = 'bakery-admin-panel';
 const ADMIN_PANEL_TABS = [
