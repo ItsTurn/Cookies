@@ -144,6 +144,27 @@ function App() {
     [],
   );
 
+
+  const heroImages = useMemo(() => {
+    const count = SITE_CONFIG.heroImageCount || 0;
+    return Array.from(
+      { length: count },
+      (_, i) => `${import.meta.env.BASE_URL}hero/${i + 1}.png`
+    );
+  }, []);
+
+const [heroIndex, setHeroIndex] = useState(0);
+
+useEffect(() => {
+  if (heroImages.length < 2) return;
+
+  const interval = setInterval(() => {
+    setHeroIndex((prev) => (prev + 1) % heroImages.length);
+  }, (SITE_CONFIG.heroTransitionSeconds || 4) * 1000);
+
+  return () => clearInterval(interval);
+}, [heroImages]);
+
   useEffect(() => {
     document.title = SITE_CONFIG.pageTitle || `${siteName} Menu`;
     document
@@ -523,7 +544,9 @@ function App() {
     });
   }
 
+
   return (
+    
     <main>
       <header className="site-header">
         <a className="brand" href="#top" aria-label={`${siteName} home`}>
@@ -557,15 +580,26 @@ function App() {
       />
 
       <section className="hero" id="top" aria-labelledby="hero-title">
-        <div className="hero-copy">
-          <p className="eyebrow">{SITE_CONFIG.heroEyebrow}</p>
-          <h1 id="hero-title">{SITE_CONFIG.heroTitle}</h1>
-          <p>{SITE_CONFIG.heroCopy}</p>
-          <a className="hero-action" href="#menu">
-            {SITE_CONFIG.heroAction}
-          </a>
-        </div>
-      </section>
+      <div className="hero-background">
+        {heroImages.map((img, index) => (
+          <img
+            key={img}
+            src={img}
+            className={`hero-bg ${index === heroIndex ? 'active' : ''}`}
+            alt=""
+          />
+        ))}
+      </div>
+
+      <div className="hero-copy">
+        <p className="eyebrow">{SITE_CONFIG.heroEyebrow}</p>
+        <h1 id="hero-title">{SITE_CONFIG.heroTitle}</h1>
+        <p>{SITE_CONFIG.heroCopy}</p>
+        <a className="hero-action" href="#menu">
+          {SITE_CONFIG.heroAction}
+        </a>
+      </div>
+    </section>
 
       <section className="menu-section" id="menu" aria-labelledby="menu-title">
         <div className="section-heading">

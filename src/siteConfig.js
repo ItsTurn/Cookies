@@ -4,6 +4,8 @@ export const SITE_CONFIG = {
   metaDescription:
     'A modern small batch bakery menu for fresh biscuits and seasonal bakes.',
   heroEyebrow: 'Small batch bakery',
+  heroImageCount: 4,
+  heroTransitionSeconds: 10,
   heroTitle: 'Fresh bakes for slow mornings and bright tables.',
   heroCopy:
     'Golden biscuits, tender crumb, and seasonal finishes baked in careful batches every morning.',
