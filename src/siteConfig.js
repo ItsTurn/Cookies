@@ -1,6 +1,6 @@
 export const SITE_CONFIG = {
-  bakeryName: "Bakery of Its Turn",
-  pageTitle: "Its Turn's Bakery Menu",
+  bakeryName: "AA+ Baking Company",
+  pageTitle: "AA+ Baking Company Menu",
   metaDescription:
     'A modern small batch bakery menu for fresh biscuits and seasonal bakes.',
   heroEyebrow: 'Small batch bakery',
